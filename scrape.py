@@ -35,7 +35,8 @@ SEL_PRICE_SPAN = "div.price span.bold.stock-left"
 SEL_PAGER_LINKS = "ul.pages li a"
 SEL_NEXT_TEXT = ">"
 
-TIMEOUT_MS = 20_000
+NAV_TIMEOUT_MS = 30_000
+DEFAULT_TIMEOUT_MS = 20_000
 PAGE_SLEEP_SEC = 3.0
 
 HLJ_CURRENCY_COOKIE = (
@@ -46,16 +47,15 @@ HLJ_CURRENCY_COOKIE = (
 )
 
 
-async def wait_for_prices(page: Page, timeout_ms: int) -> None:
-    await page.wait_for_selector(SEL_PRICE_SPAN, timeout=timeout_ms)
+async def wait_for_prices(page: Page) -> None:
+    await page.wait_for_selector(SEL_PRICE_SPAN)
     await page.wait_for_function(
         """
         () => {
           const prices = [...document.querySelectorAll("div.price span.bold.stock-left")];
           return prices.length > 0 && prices.every(p => (p.textContent || "").trim().length > 0);
         }
-        """,
-        timeout=timeout_ms,
+        """
     )
 
 
@@ -106,7 +106,6 @@ async def scrape_hlj_search_page(
     name: str,
     url: str,
     fd,
-    timeout_ms: int = TIMEOUT_MS,
     page_sleep_sec: float = PAGE_SLEEP_SEC,
 ) -> None:
     print(f"Scraping {name} from '{url}'")
@@ -119,8 +118,8 @@ async def scrape_hlj_search_page(
 
     page_number = 1
     while page_number <= max_pages:
-        await page.wait_for_selector(SEL_SEARCH_BLOCK, timeout=timeout_ms)
-        await wait_for_prices(page, timeout_ms=timeout_ms)
+        await page.wait_for_selector(SEL_SEARCH_BLOCK)
+        await wait_for_prices(page)
 
         rows = []
         raw_items = await extract_hlj_search_results(page)
@@ -173,6 +172,8 @@ async def scrape_worker(name: str, url: str, fd, **kwargs) -> None:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
+        context.set_default_navigation_timeout(NAV_TIMEOUT_MS)
+        context.set_default_timeout(DEFAULT_TIMEOUT_MS)
         await context.route("**/*", route_handler)
         await context.add_cookies(
             [
