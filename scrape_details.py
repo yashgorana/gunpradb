@@ -239,7 +239,7 @@ async def main():
     fd = None
     urls = set()
     input_data_dir = Path("./data/raw/")
-    output_metadata_file = Path("./data/metadata.jsonl")
+    output_metadata_file = Path("./data/data.jsonl")
 
     # read all urls
     for path in input_data_dir.glob("*.jsonl"):
