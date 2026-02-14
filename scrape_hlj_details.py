@@ -142,7 +142,7 @@ async def scrape_one_url(
                     if result:
                         return result
                     break
-                except PlaywrightTimeoutError, PlaywrightError:
+                except (PlaywrightTimeoutError, PlaywrightError):
                     if attempt < MAX_RETRIES:
                         await asyncio.sleep(2**attempt)
                         continue
@@ -225,13 +225,21 @@ async def scrape_worker(urls: set, fd):
 
 def read_data_jsonl(path: Path) -> set:
     urls = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        record = json.loads(line)
-        url = record.get("url")
-        if isinstance(url, str) and url.strip():
-            urls.add(url.strip())
+    if not path.exists():
+        return urls
+
+    with path.open("r", encoding="utf-8") as fd:
+        for line in fd:
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            url = record.get("url")
+            if isinstance(url, str) and url.strip():
+                urls.add(url.strip())
     return urls
 
 
@@ -240,13 +248,24 @@ async def main():
     urls = set()
     input_data_dir = Path("./data/raw/")
     output_metadata_file = Path("./data/data.jsonl")
+    output_metadata_file.parent.mkdir(parents=True, exist_ok=True)
 
     # read all urls
-    for path in input_data_dir.glob("*.jsonl"):
+    for path in sorted(input_data_dir.glob("*.jsonl")):
         urls.update(read_data_jsonl(path))
+    scraped_urls = read_data_jsonl(output_metadata_file)
+    pending_urls = urls - scraped_urls
+
+    print(f"Discovered {len(urls)} URLs in raw inputs")
+    print(f"Already scraped {len(scraped_urls)} URLs")
+    print(f"Pending scrape count: {len(pending_urls)}")
+
+    if len(pending_urls) == 0:
+        print("No new URLs found.")
+        return
     try:
-        fd = output_metadata_file.open("w", encoding="utf-8")
-        await scrape_worker(urls, fd)
+        fd = output_metadata_file.open("a", encoding="utf-8")
+        await scrape_worker(pending_urls, fd)
     except KeyboardInterrupt:
         print("\nInterrupted by user. Exiting cleanly.")
     except Exception as e:
